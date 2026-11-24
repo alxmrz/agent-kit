@@ -1,8 +1,0 @@
-# Правила, которые agent-kit дописывает в openspec/config.yaml.
-# Формат: <ключ rules>\t<текст правила>. Маркер [alxmrz_kit] в конце строки
-# ставится здесь же: строки с ним kit считает своими и пересоздаёт,
-# остальные правила в файле остаются нетронутыми.
-specs	Методика написания spec.md — скилл `alxmrz_kit_spec-authoring` (`.agents/skills/alxmrz_kit_spec-authoring/`): только требования и сценарии. Таблицы изменений, тестов и API в spec.md не пишутся — они в design.md. Загрузи скилл перед написанием или правкой спеки. [alxmrz_kit]
-design	Методика и обязательный набор диаграмм — скилл `alxmrz_kit_spec-authoring`, `references/design-diagrams.md`. Все диаграммы только в design.md. [alxmrz_kit]
-design	Обязательный контракт design.md — скилл `alxmrz_kit_spec-authoring`, `references/traceability.md`: таблицы «Изменения», «Тесты» и «API» живут здесь, а не в spec.md. [alxmrz_kit]
-tasks	Методика нарезки задач — скилл `alxmrz_kit_spec-authoring`, `references/tasks-slicing.md`. [alxmrz_kit]

@@ -1,11 +1,10 @@
 # shellcheck shell=sh
 # Общие помощники. Подключается из install.sh, отдельно не запускается.
 
-PREFIX="alxmrz_kit"
-# Используется в install.sh и lib/manifest.sh; при проверке этого файла
+# Используется в lib/components.sh и lib/render.sh; при проверке этого файла
 # отдельно shellcheck считает переменную неиспользуемой.
 # shellcheck disable=SC2034
-MANIFEST_NAME=".${PREFIX}_manifest.json"
+PREFIX="alxmrz_kit"
 
 log() { printf '%s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
@@ -15,20 +14,6 @@ warn() { printf '  WARN  %s\n' "$*" >&2; }
 die() {
 	printf 'ERROR: %s\n' "$*" >&2
 	exit 1
-}
-
-have() { command -v "$1" >/dev/null 2>&1; }
-
-sha256_of() {
-	if have sha256sum; then
-		sha256sum "$1" | cut -d' ' -f1
-	elif have shasum; then
-		shasum -a 256 "$1" | cut -d' ' -f1
-	elif have openssl; then
-		openssl dgst -sha256 "$1" | sed 's/.*= *//'
-	else
-		die "нужен sha256sum, shasum или openssl"
-	fi
 }
 
 # Раскрывает ~ и ~/... в путях, пришедших из аргументов или конфигов.
@@ -89,19 +74,4 @@ refuse_symlink() {
 has_line() {
 	[ -f "$1" ] || return 1
 	grep -qxF -- "$2" "$1"
-}
-
-# Удаляет пустые каталоги от $_dir вверх, но не трогает сам .agents и проект.
-prune_empty_dirs() {
-	_dir=$1
-	while :; do
-		case "$_dir" in
-		"$PROJECT_DIR"/.agents/*) ;;
-		*) break ;;
-		esac
-		if ! rmdir "$_dir" 2>/dev/null; then
-			break
-		fi
-		_dir=$(dirname "$_dir")
-	done
 }

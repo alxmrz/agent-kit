@@ -20,8 +20,5 @@ jobs:
       - name: shellcheck
         run: shellcheck -s sh install.sh bootstrap.sh lib/*.sh tests/smoke.sh
 
-      - name: python3
-        run: python3 -m py_compile lib/merge.py
-
       - name: smoke-тесты
         run: ./tests/smoke.sh
