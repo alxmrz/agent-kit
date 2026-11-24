@@ -60,6 +60,7 @@ curl -fsSL https://raw.githubusercontent.com/alxmrz/agent-kit/main/bootstrap.sh 
 | `--dry-run` | показать план, ничего не записывая |
 | `--keep-modified` | не перезаписывать локально изменённые файлы |
 | `--no-agents` | не создавать `AGENTS.md` |
+| `--no-openspec` | не дописывать правила в `openspec/config.yaml` |
 
 ## Переменные окружения
 

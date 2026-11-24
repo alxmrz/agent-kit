@@ -25,6 +25,7 @@ PROFILE=$DEFAULT_PROFILE
 DRY_RUN=0
 KEEP_MODIFIED=0
 NO_AGENTS=0
+NO_OPENSPEC=0
 
 cleanup() {
 	if [ -n "$STATE_DIR" ] && [ -d "$STATE_DIR" ]; then
@@ -49,6 +50,7 @@ agent-kit $KIT_VERSION
   --dry-run            показать план, ничего не записывая
   --keep-modified      не перезаписывать локально изменённые kit-файлы
   --no-agents          не создавать AGENTS.md
+  --no-openspec        не дописывать правила в openspec/config.yaml
   --offline            не обновлять клон kit-а (для bootstrap.sh)
   -h, --help           эта справка
 
@@ -87,6 +89,7 @@ parse_args() {
 		--dry-run) DRY_RUN=1 ;;
 		--keep-modified) KEEP_MODIFIED=1 ;;
 		--no-agents) NO_AGENTS=1 ;;
+		--no-openspec) NO_OPENSPEC=1 ;;
 		--offline)
 			# install.sh в сеть не ходит: флаг осмыслен только для bootstrap.sh,
 			# здесь принимается, чтобы команда была одинаковой.
@@ -230,6 +233,10 @@ install_openspec_rules() {
 	step "openspec/config.yaml"
 	_cfg="$PROJECT_DIR/openspec/config.yaml"
 
+	if [ "$NO_OPENSPEC" -eq 1 ]; then
+		skip "openspec/config.yaml (--no-openspec)"
+		return 0
+	fi
 	if [ ! -f "$_cfg" ]; then
 		skip "openspec в проекте не инициализирован (нет openspec/config.yaml)"
 		return 0
