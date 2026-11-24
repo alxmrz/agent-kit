@@ -70,8 +70,3 @@ refuse_symlink() {
 		die "$_label: это симлинк; kit не пишет через симлинки (уберите файл вручную)"
 	fi
 }
-
-has_line() {
-	[ -f "$1" ] || return 1
-	grep -qxF -- "$2" "$1"
-}

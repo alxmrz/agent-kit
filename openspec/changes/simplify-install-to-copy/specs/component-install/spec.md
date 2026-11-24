@@ -113,16 +113,16 @@ each file lands, and the safety rules that keep the copy inside the project and 
 
 ### Requirement: Файл .gitignore
 
-Строка `.agent-kit/` SHALL дописываться в `.gitignore` проекта, если её там нет. Существующее
-содержимое и форматирование файла MUST сохраняться.
+Установка MUST NOT читать или изменять `.gitignore` проекта: клон `bootstrap.sh` удаляется после
+установки, поэтому игнорировать нечего.
 
-#### Scenario: Строки нет
-- **WHEN** в `.gitignore` нет строки `.agent-kit/`
-- **THEN** строка дописывается в конец файла, прежние строки не меняются
+#### Scenario: В .gitignore нет строки .agent-kit/
+- **WHEN** в проекте нет строки `.agent-kit/`
+- **THEN** файл не создаётся и не изменяется
 
-#### Scenario: Строка уже есть
-- **WHEN** `.gitignore` уже содержит `.agent-kit/`
-- **THEN** файл не изменяется, в том числе не появляется дубль
+#### Scenario: Чужой .gitignore
+- **WHEN** в проекте есть свой `.gitignore`
+- **THEN** после установки он побайтово прежний
 
 ### Requirement: Подсказка о подключении правил
 

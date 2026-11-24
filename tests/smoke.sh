@@ -64,7 +64,7 @@ check "opencode.json не создан" test ! -e "$P/opencode.json"
 check "AGENTS.md создан" test -f "$P/AGENTS.md"
 check "в AGENTS.md нет плейсхолдеров" sh -c "! grep -q '{{' '$P/AGENTS.md'"
 check "AGENTS.md ссылается на правило kit-а" grep -q 'alxmrz_kit_general_rules.md' "$P/AGENTS.md"
-check ".gitignore игнорирует клон" grep -qxF '.agent-kit/' "$P/.gitignore"
+check ".gitignore не создан" test ! -e "$P/.gitignore"
 check "base не ссылается на php_rules" sh -c "! grep -q 'php_rules' '$P/.agents/rules/alxmrz_kit_general_rules.md'"
 check "skills не содержат metadata kit-а" sh -c "! grep -q 'alxmrz-kit:' '$P/.agents/skills/alxmrz_kit_conventional-commit/SKILL.md'"
 check "name: скилла не подменён ID" grep -qx 'name: conventional-commit' "$P/.agents/skills/alxmrz_kit_conventional-commit/SKILL.md"
@@ -87,7 +87,7 @@ kit --dir "$P" >/dev/null 2>&1
 cp -a "$P" "$WORK/idempotent-snap"
 kit --dir "$P" >/dev/null 2>&1
 check "второй запуск не меняет файлы" sh -c "diff -r '$P' '$WORK/idempotent-snap' >/dev/null"
-check ".gitignore не дублирует строку" test "$(grep -cxF '.agent-kit/' "$P/.gitignore")" -eq 1
+check "повторный запуск не создал .gitignore" test ! -e "$P/.gitignore"
 
 # --- 4. чужие файлы ---------------------------------------------------------
 printf '\n== 4. чужие файлы\n'
@@ -128,7 +128,7 @@ else
 fi
 check "ошибка называет доступные группы" grep -q 'есть: base php' "$WORK/unknown.log"
 check "при неизвестной группе ничего не записано" sh -c "
-	[ ! -e '$P/.agents' ] && [ ! -e '$P/AGENTS.md' ] && [ ! -e '$P/.gitignore' ]
+	[ ! -e '$P/.agents' ] && [ ! -e '$P/AGENTS.md' ] && [ ! -e '$P/.opencode' ]
 "
 
 # --- 6. команды и агенты ----------------------------------------------------
@@ -166,28 +166,17 @@ kit --dir "$P" >/dev/null 2>&1 || bad "симлинк AGENTS.md уронил у�
 check "AGENTS.md остался симлинком" test -L "$P/AGENTS.md"
 check "файл по симлинку не изменён" grep -qxF 'НЕ ТРОГАТЬ' "$WORK/victim-agents.md"
 
-# --- 8. .gitignore ----------------------------------------------------------
+# --- 8. .gitignore не трогается ---------------------------------------------
 printf '\n== 8. .gitignore\n'
 P=$(new_project gitignore-none)
 kit --dir "$P" >/dev/null 2>&1
-check "строка дописана" grep -qxF '.agent-kit/' "$P/.gitignore"
+check ".gitignore не создан" test ! -e "$P/.gitignore"
 
 P=$(new_project gitignore-own)
 printf 'vendor/\r\n' >"$P/.gitignore"
 cp "$P/.gitignore" "$WORK/gi-own-before"
 kit --dir "$P" >/dev/null 2>&1
-check "чужое содержимое сохранено байт-в-байт" sh -c "
-	_size=\$(wc -c <'$WORK/gi-own-before' | tr -d ' ')
-	head -c \"\$_size\" '$P/.gitignore' >'$WORK/gi-own-head'
-	cmp -s '$WORK/gi-own-head' '$WORK/gi-own-before'
-"
-check "строка дописана после чужой" test "$(wc -l <"$P/.gitignore" | tr -d ' ')" -eq 2
-
-P=$(new_project gitignore-has)
-printf '.agent-kit/\n' >"$P/.gitignore"
-cp "$P/.gitignore" "$WORK/gi-before"
-kit --dir "$P" >/dev/null 2>&1
-check "существующая строка не дублируется и файл не тронут" cmp -s "$P/.gitignore" "$WORK/gi-before"
+check "чужой .gitignore сохранён байт-в-байт" cmp -s "$P/.gitignore" "$WORK/gi-own-before"
 
 # --- 9. dry-run -------------------------------------------------------------
 printf '\n== 9. dry-run\n'
@@ -195,7 +184,6 @@ P=$(new_project dry)
 kit --dir "$P" --dry-run >/dev/null 2>&1
 check "dry-run не создал .agents" test ! -d "$P/.agents"
 check "dry-run не создал AGENTS.md" test ! -e "$P/AGENTS.md"
-check "dry-run не создал .gitignore" test ! -e "$P/.gitignore"
 
 # --- 10. границы записи ------------------------------------------------------
 printf '\n== 10. границы\n'
@@ -232,8 +220,107 @@ else
 fi
 check "файл по симлинку не изменён" grep -qxF 'НЕ ТРОГАТЬ' "$WORK/victim.md"
 
-# --- 11. ошибка компонента прерывает установку -----------------------------
-printf '\n== 11. битый компонент\n'
+# --- 11. bootstrap.sh удаляет клон ------------------------------------------
+printf '\n== 11. bootstrap\n'
+# Локальный «origin» из текущих исходников kit-а: сеть тесту не нужна.
+ORIGIN="$WORK/origin"
+mkdir -p "$ORIGIN"
+cp -R "$KIT_ROOT/install.sh" "$KIT_ROOT/bootstrap.sh" "$KIT_ROOT/lib" \
+	"$KIT_ROOT/components" "$KIT_ROOT/snippets" "$KIT_ROOT/VERSION" "$ORIGIN/"
+git -C "$ORIGIN" init -q -b main
+git -C "$ORIGIN" add -A
+git -C "$ORIGIN" -c user.email=t@t -c user.name=t commit -qm init
+
+P=$(new_project bootstrap)
+if sh -c "cd '$P' && AGENT_KIT_REPO='$ORIGIN' sh '$KIT_ROOT/bootstrap.sh' --with php" \
+	>"$WORK/bootstrap.log" 2>&1; then
+	ok "bootstrap поставил файлы"
+else
+	bad "bootstrap упал (см. $WORK/bootstrap.log)"
+fi
+check "правила на месте" test -f "$P/.agents/rules/alxmrz_kit_general_rules.md"
+check "группа --with дошла до install.sh" test -f "$P/.agents/rules/alxmrz_kit_php_rules.md"
+check "клон .agent-kit удалён" test ! -e "$P/.agent-kit"
+check "AGENTS.md создан" test -f "$P/AGENTS.md"
+check "в лог попало удаление клона" grep -q 'Клон kit-а удалён' "$WORK/bootstrap.log"
+check "подсказка обновления не ведёт в удалённый клон" sh -c "
+	! grep -q '\.agent-kit/install.sh' '$WORK/bootstrap.log'
+"
+
+# Существующий клон в dry-run не удаляется: установка ничего не пишет, значит и
+# не трогает то, чего не создавала.
+P=$(new_project bootstrap-dry)
+git clone -q --depth 1 "$ORIGIN" "$P/.agent-kit"
+if sh -c "cd '$P' && sh '$KIT_ROOT/bootstrap.sh' --offline --dry-run" >/dev/null 2>&1; then
+	ok "bootstrap --dry-run завершился"
+else
+	bad "bootstrap --dry-run упал"
+fi
+check "dry-run оставил клон на месте" test -d "$P/.agent-kit"
+check "dry-run не поставил файлы" test ! -e "$P/.agents"
+
+# Свежий клон в dry-run — временный артефакт самого запуска: проект должен
+# остаться чистым, поэтому он удаляется.
+P=$(new_project bootstrap-dry-fresh)
+if sh -c "cd '$P' && AGENT_KIT_REPO='$ORIGIN' sh '$KIT_ROOT/bootstrap.sh' --dry-run" \
+	>/dev/null 2>&1; then
+	ok "bootstrap --dry-run со свежим клоном завершился"
+else
+	bad "bootstrap --dry-run со свежим клоном упал"
+fi
+check "свежий клон удалён после dry-run" test ! -e "$P/.agent-kit"
+check "проект после dry-run пуст" sh -c "
+	[ ! -e '$P/.agents' ] && [ ! -e '$P/AGENTS.md' ]
+"
+
+# Клон снаружи проекта — выбор пользователя (AGENT_KIT_DIR), его не удаляем.
+P=$(new_project bootstrap-outside)
+OUT="$WORK/outside-kit"
+git clone -q --depth 1 "$ORIGIN" "$OUT"
+if sh -c "cd '$P' && AGENT_KIT_DIR='$OUT' sh '$KIT_ROOT/bootstrap.sh' --offline" \
+	>"$WORK/bootstrap-outside.log" 2>&1; then
+	ok "bootstrap с внешним клоном завершился"
+else
+	bad "bootstrap с внешним клоном упал"
+fi
+check "внешний клон не удалён" test -d "$OUT/.git"
+check "файлы поставлены" test -f "$P/.agents/rules/alxmrz_kit_general_rules.md"
+
+# Ошибка установки: клон остаётся, чтобы было видно, что сломалось.
+P=$(new_project bootstrap-fail)
+if sh -c "cd '$P' && AGENT_KIT_REPO='$ORIGIN' sh '$KIT_ROOT/bootstrap.sh' --with nope" \
+	>/dev/null 2>&1; then
+	bad "bootstrap проглотил ошибку установки"
+else
+	ok "bootstrap вернул ошибку установки"
+fi
+check "после ошибки клон оставлен" test -d "$P/.agent-kit"
+
+# После неудачного запуска клон остался: следующий запуск использует его и
+# удаляет после успешной установки.
+if sh -c "cd '$P' && sh '$KIT_ROOT/bootstrap.sh' --offline" >"$WORK/bootstrap-retry.log" 2>&1; then
+	ok "повторный запуск поверх оставшегося клона"
+else
+	bad "повторный запуск поверх клона упал (см. $WORK/bootstrap-retry.log)"
+fi
+check "правила поставлены при повторе" test -f "$P/.agents/rules/alxmrz_kit_general_rules.md"
+check "оставшийся клон удалён после успеха" test ! -e "$P/.agent-kit"
+
+# Рабочий клон с правками — не временный каталог, его не удаляем.
+P=$(new_project bootstrap-dirty)
+git clone -q --depth 1 "$ORIGIN" "$P/.agent-kit"
+printf '\n# доработка kit-а\n' >>"$P/.agent-kit/install.sh"
+if sh -c "cd '$P' && sh '$KIT_ROOT/bootstrap.sh' --offline" >"$WORK/bootstrap-dirty.log" 2>&1; then
+	ok "установка из изменённого клона завершилась"
+else
+	bad "установка из изменённого клона упала"
+fi
+check "клон с правками не удалён" test -f "$P/.agent-kit/install.sh"
+check "правка в клоне цела" grep -q '# доработка kit-а' "$P/.agent-kit/install.sh"
+check "предупреждение о незакоммиченных изменениях" grep -q 'незакоммиченные изменения' "$WORK/bootstrap-dirty.log"
+
+# --- 12. ошибка компонента прерывает установку ------------------------------
+printf '\n== 12. битый компонент\n'
 EXT=$(kit_ext ext-broken)
 mkdir -p "$EXT/components/base/rules/nested"
 printf '# вложенный\n' >"$EXT/components/base/rules/nested/x.md"

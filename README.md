@@ -12,26 +12,26 @@
 curl -fsSL https://raw.githubusercontent.com/alxmrz/agent-kit/main/bootstrap.sh | sh
 ```
 
-Команда клонирует kit в `./.agent-kit/` (добавляется в `.gitignore`) и запускает установку.
-Языковую специфику можно подключить сразу:
+Команда клонирует kit во временный `./.agent-kit/`, ставит файлы и удаляет клон: в проекте
+остаются только файлы для ИИ-агента. Языковую специфику можно подключить сразу:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/alxmrz/agent-kit/main/bootstrap.sh | sh -s -- --with php
 ```
 
-Повторный запуск обновляет клон и перезаписывает файлы kit-а:
+Повторный запуск той же командой ставит свежую версию и снова убирает клон:
 
 ```sh
-./.agent-kit/install.sh                 # обновить (только base)
-./.agent-kit/install.sh --with php,js   # base + php + js
-./.agent-kit/install.sh --dry-run       # показать план
+curl -fsSL https://raw.githubusercontent.com/alxmrz/agent-kit/main/bootstrap.sh | sh -s -- --with php,js
+curl -fsSL https://raw.githubusercontent.com/alxmrz/agent-kit/main/bootstrap.sh | sh -s -- --dry-run
 ```
 
-Без сети:
+Клон сохраняется (с предупреждением), если установка упала или задан `AGENT_KIT_DIR` с путём
+вне проекта: по нему видно, что пошло не так, и с него можно повторить запуск. Клон с
+незакоммиченными изменениями тоже не удаляется — его могли оставить для доработки kit-а.
 
-```sh
-sh ./.agent-kit/bootstrap.sh --offline
-```
+`bootstrap.sh` понимает `--offline`: не обновлять уже существующий клон. Он полезен, если клон
+остался после неудачного запуска.
 
 Удаления одной командой нет: kit не ведёт учёт поставленного. Уберите файлы с префиксом
 `alxmrz_kit_` из `.agents/` и `.opencode/` вручную.
@@ -47,7 +47,6 @@ sh ./.agent-kit/bootstrap.sh --offline
 | `.opencode/commands/alxmrz_kit_<имя>.md` | команды (когда появятся в группе) |
 | `.opencode/agents/alxmrz_kit_<имя>.md` | агенты (когда появятся в группе) |
 | `AGENTS.md` | создаётся один раз, если его нет |
-| `.gitignore` | добавляется `.agent-kit/` |
 
 ## Группы
 
@@ -66,7 +65,9 @@ sh ./.agent-kit/bootstrap.sh --offline
 - **Перезапись безусловная.** Файл с префиксом `alxmrz_kit_` всегда приводится к содержимому
   из `components/`. Правки в таких файлах не сохраняются — своё держите в файлах без префикса.
 - **Чужие файлы неприкосновенны.** Всё, что не имеет префикса `alxmrz_kit_`, не читается и не
-  перезаписывается. `opencode.json` и `openspec/config.yaml` kit не трогает.
+  перезаписывается. `opencode.json`, `openspec/config.yaml` и `.gitignore` kit не трогает.
+- **В проекте не остаётся kit-а.** `bootstrap.sh` удаляет свой клон после успешной установки;
+  каталога `.agent-kit/` в проекте нет, игнорировать в `.gitignore` нечего.
 - **Повторный запуск идемпотентен.** Если kit не менялся, диффа в git не будет.
 - **Правила подключает `AGENTS.md`.** В проект без `AGENTS.md` он создаётся из шаблона со
   ссылкой на правила. Если `AGENTS.md` уже был, установка печатает пути для `instructions[]`
@@ -80,17 +81,19 @@ sh ./.agent-kit/bootstrap.sh --offline
 | `--with <группы>` | дополнительные группы через запятую; можно повторять |
 | `--dry-run` | показать план, ничего не записывая |
 
-`bootstrap.sh` дополнительно понимает `--offline` (не обновлять клон).
+`bootstrap.sh` дополнительно понимает `--offline` — не обновлять уже существующий клон (полезно
+после упавшей установки, когда клон остался на месте).
 
 ## Переменные окружения
 
 `bootstrap.sh` понимает `AGENT_KIT_REPO`, `AGENT_KIT_REF` и `AGENT_KIT_DIR` —
-удобно для форка или проверки ветки.
+удобно для форка или проверки ветки. Клон по `AGENT_KIT_DIR` вне проекта не удаляется:
+это ваш каталог, а не временный.
 
 ## Состав репозитория
 
 ```
-bootstrap.sh                  точка входа: clone -> install.sh
+bootstrap.sh                  точка входа: clone -> install.sh -> удаление клона
 install.sh                    установка
 lib/                          общие функции, группы, рендеринг ссылок
 components/base/              всегда ставимая группа

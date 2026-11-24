@@ -63,7 +63,6 @@ agent-kit $KIT_VERSION
   .opencode/commands/${PREFIX}_<имя>.md
   .opencode/agents/${PREFIX}_<имя>.md
   AGENTS.md              (только если его ещё нет)
-  .gitignore             (добавляется .agent-kit/)
 EOF
 }
 
@@ -195,30 +194,6 @@ install_agents_md() {
 	warn "AGENTS.md: заполните разделы TODO — дальше kit его не трогает"
 }
 
-install_gitignore() {
-	step ".gitignore"
-	_gi="$PROJECT_DIR/.gitignore"
-
-	if has_line "$_gi" ".agent-kit/"; then
-		skip ".gitignore (.agent-kit/ уже игнорируется)"
-		return 0
-	fi
-	refuse_symlink "$_gi" ".gitignore"
-	if [ "$DRY_RUN" -eq 1 ]; then
-		ok ".gitignore (план: добавить .agent-kit/)"
-		return 0
-	fi
-
-	{
-		if [ -s "$_gi" ] && [ -n "$(tail -c 1 "$_gi")" ]; then
-			printf '\n'
-		fi
-		printf '.agent-kit/\n'
-	} >"$STATE_DIR/gitignore.append"
-	cat "$STATE_DIR/gitignore.append" >>"$_gi"
-	ok ".gitignore (.agent-kit/ добавлен)"
-}
-
 # Правила из .agents/rules/ никуда не подключаются автоматически.
 # Если AGENTS.md создан из шаблона, он уже ссылается на них; если уже был —
 # печатаем готовые пути для instructions[] файла opencode.json.
@@ -245,11 +220,16 @@ cmd_install() {
 
 	install_components
 	install_agents_md
-	install_gitignore
 	print_instructions_hint
 
 	step "Готово"
-	log "  Обновить:  $KIT_ROOT/install.sh --dir \"$PROJECT_DIR\""
+	if [ "${AGENT_KIT_EPHEMERAL:-0}" -eq 1 ]; then
+		# Клона, из которого запускался install.sh, в проекте уже нет: обновление
+		# снова идёт через bootstrap.sh, а не через локальный install.sh.
+		log "  Обновить:  снова запустить bootstrap.sh с теми же флагами"
+	else
+		log "  Обновить:  $KIT_ROOT/install.sh --dir \"$PROJECT_DIR\""
+	fi
 	if [ ! -d "$PROJECT_DIR/openspec" ]; then
 		log "  OpenSpec:  openspec init . --tools opencode"
 	fi
