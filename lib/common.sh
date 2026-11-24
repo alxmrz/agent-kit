@@ -2,6 +2,9 @@
 # Общие помощники. Подключается из install.sh, отдельно не запускается.
 
 PREFIX="alxmrz_kit"
+# Используется в install.sh и lib/manifest.sh; при проверке этого файла
+# отдельно shellcheck считает переменную неиспользуемой.
+# shellcheck disable=SC2034
 MANIFEST_NAME=".${PREFIX}_manifest.json"
 
 log() { printf '%s\n' "$*"; }
@@ -16,9 +19,6 @@ die() {
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
-# Абсолютный путь к существующему каталогу.
-abspath() { (cd "$1" && pwd -P); }
-
 sha256_of() {
 	if have sha256sum; then
 		sha256sum "$1" | cut -d' ' -f1
@@ -31,14 +31,41 @@ sha256_of() {
 	fi
 }
 
+# Раскрывает ~ и ~/... в путях, пришедших из аргументов или конфигов.
+# Без этого `--dir '~'` попадал в cd как литеральный каталог "~".
+expand_tilde() {
+	case "$1" in
+	"~") printf '%s\n' "${HOME:-/nonexistent}" ;;
+	"~"/*)
+		# shellcheck disable=SC2088  # это литерал "~/", а не путь для раскрытия
+		_rel=${1#"~/"}; printf '%s\n' "${HOME:-/nonexistent}/$_rel"
+		;;
+	*) printf '%s\n' "$1" ;;
+	esac
+}
+
+# Абсолютный путь к существующему каталогу.
+abspath() {
+	[ -d "$1" ] || return 1
+	(cd "$1" && pwd -P)
+}
+
 # Каталог проекта: только он и его подкаталоги. Домашний каталог и корень запрещены.
 resolve_project_dir() {
-	_dir=$(abspath "$1")
-	[ -d "$_dir" ] || die "нет такого каталога: $1"
+	_arg=$(expand_tilde "$1")
+	_dir=$(abspath "$_arg") || die "нет такого каталога: $1"
 	case "$_dir" in
 	"/") die "отказываюсь работать в корне файловой системы" ;;
-	"$HOME") die "kit ставится только внутрь проекта, не в домашний каталог: $_dir" ;;
 	esac
+	# HOME может быть не задан (set -u) или задан со слешем на конце,
+	# поэтому сравниваем канонические пути, а не строки.
+	_home=${HOME:-}
+	if [ -n "$_home" ] && [ -d "$_home" ]; then
+		_home=$(abspath "$_home") || _home=
+		if [ "$_dir" = "$_home" ]; then
+			die "kit ставится только внутрь проекта, не в домашний каталог: $_dir"
+		fi
+	fi
 	printf '%s\n' "$_dir"
 }
 
@@ -49,7 +76,32 @@ in_project() {
 	esac
 }
 
+# Симлинк на месте файла kit-а означает запись в чужое место:
+# cp/mv пошли бы по ссылке. Отказываемся, а не перезаписываем.
+refuse_symlink() {
+	_path=$1
+	_label=$2
+	if [ -L "$_path" ]; then
+		die "$_label: это симлинк; kit не пишет через симлинки (уберите файл вручную)"
+	fi
+}
+
 has_line() {
 	[ -f "$1" ] || return 1
 	grep -qxF -- "$2" "$1"
+}
+
+# Удаляет пустые каталоги от $_dir вверх, но не трогает сам .agents и проект.
+prune_empty_dirs() {
+	_dir=$1
+	while :; do
+		case "$_dir" in
+		"$PROJECT_DIR"/.agents/*) ;;
+		*) break ;;
+		esac
+		if ! rmdir "$_dir" 2>/dev/null; then
+			break
+		fi
+		_dir=$(dirname "$_dir")
+	done
 }

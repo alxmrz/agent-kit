@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/alxmrz/agent-kit/main/bootstrap.sh | sh
 #
-# Клонирует kit в ./.agent-kit и сразу запускает install.sh.
+# Клонирует kit в <корень проекта>/.agent-kit и сразу запускает install.sh.
 # Повторный запуск обновляет клон и перегенерирует файлы.
 # Всё пишется только внутрь текущего проекта.
 
@@ -11,8 +11,8 @@ set -eu
 
 REPO_URL=${AGENT_KIT_REPO:-https://github.com/alxmrz/agent-kit.git}
 REF=${AGENT_KIT_REF:-main}
-KIT_DIR=${AGENT_KIT_DIR:-.agent-kit}
 OFFLINE=0
+HAS_DIR=0
 
 die() {
 	printf 'ERROR: %s\n' "$*" >&2
@@ -21,12 +21,26 @@ die() {
 
 # --offline относится к обновлению клона; остальные флаги уходят в install.sh.
 for arg in "$@"; do
-	if [ "$arg" = "--offline" ]; then
-		OFFLINE=1
-	fi
+	case "$arg" in
+	--offline) OFFLINE=1 ;;
+	--dir) HAS_DIR=1 ;;
+	esac
 done
 
 command -v git >/dev/null 2>&1 || die "нужен git"
+
+# Корень проекта, а не текущий подкаталог: запуск из src/ не должен
+# ставить правила в src/. Если проект не под git — работаем в текущем каталоге.
+TARGET=$(pwd -P)
+if ROOT=$(git rev-parse --show-toplevel 2>/dev/null) && [ -n "$ROOT" ]; then
+	TARGET=$ROOT
+fi
+
+KIT_DIR=${AGENT_KIT_DIR:-"$TARGET/.agent-kit"}
+case "$KIT_DIR" in
+/*) ;;
+*) KIT_DIR="$TARGET/$KIT_DIR" ;;
+esac
 
 if [ ! -d "$KIT_DIR/.git" ]; then
 	if [ -e "$KIT_DIR" ]; then
@@ -47,4 +61,9 @@ else
 	fi
 fi
 
-sh "$KIT_DIR/install.sh" "$@"
+# install.sh ставит файлы в каталог из --dir; по умолчанию — корень проекта.
+if [ "$HAS_DIR" -eq 1 ]; then
+	sh "$KIT_DIR/install.sh" "$@"
+else
+	sh "$KIT_DIR/install.sh" "$@" --dir "$TARGET"
+fi

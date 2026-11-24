@@ -81,3 +81,9 @@ manifest_write() {
 	mv "$_tmp" "$_out"
 	return 0
 }
+
+# manifest_remove: удаляет манифест (uninstall) и пустой .agents.
+manifest_remove() {
+	rm -f "$(manifest_path)"
+	rmdir "$PROJECT_DIR/.agents" 2>/dev/null || true
+}
