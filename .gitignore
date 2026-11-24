@@ -1,0 +1,4 @@
+.agent-kit/
+*.tmp
+*.bak
+.DS_Store
