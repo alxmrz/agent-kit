@@ -63,6 +63,7 @@ agent-kit $KIT_VERSION
   .opencode/commands/${PREFIX}_<имя>.md
   .opencode/agents/${PREFIX}_<имя>.md
   AGENTS.md              (только если его ещё нет)
+  opencode.json          (instructions[] с правилами base и выбранных групп)
 EOF
 }
 
@@ -179,7 +180,6 @@ install_agents_md() {
 
 	if [ -e "$_dst" ] || [ -L "$_dst" ]; then
 		skip "AGENTS.md (уже есть; kit его не перезаписывает)"
-		AGENTS_WAS_PRESENT=1
 		return 0
 	fi
 	if [ "$DRY_RUN" -eq 1 ]; then
@@ -194,18 +194,70 @@ install_agents_md() {
 	warn "AGENTS.md: заполните разделы TODO — дальше kit его не трогает"
 }
 
-# Правила из .agents/rules/ никуда не подключаются автоматически.
-# Если AGENTS.md создан из шаблона, он уже ссылается на них; если уже был —
-# печатаем готовые пути для instructions[] файла opencode.json.
-print_instructions_hint() {
-	[ "${AGENTS_WAS_PRESENT:-0}" -eq 1 ] || return 0
-	grep '^\.agents/rules/' "$STATE_DIR/targets" >"$STATE_DIR/rules" || return 0
-	[ -s "$STATE_DIR/rules" ] || return 0
+# Пути поставленных правил в виде, пригодном для instructions[]:
+# base и все выбранные языковые группы попадают сюда, потому что их файлы
+# лежат в .agents/rules/ (см. target_path).
+instructions_list() {
+	sed -n 's|^\.agents/rules/|./.agents/rules/|p' "$STATE_DIR/targets"
+}
 
-	log ""
-	log "  AGENTS.md уже был — kit его не менял."
-	log "  Чтобы агент видел правила kit-а, добавьте пути в instructions[] opencode.json:"
-	sed 's|^|          "|; s|$|",|' "$STATE_DIR/rules"
+# print_instructions_hint: пути правил для ручного добавления в opencode.json.
+print_instructions_hint() {
+	log "        Добавьте в instructions[] opencode.json:"
+	sed 's|^|          "|; s|$|",|' "$STATE_DIR/instructions"
+}
+
+# opencode.json: в instructions[] добавляются правила base и выбранных групп.
+# Чужое содержимое и форматирование сохраняются (см. lib/merge.py). Без
+# python3 файл не правится — печатаются пути для ручной вставки. opencode.jsonc
+# не трогаем: комментарии JSONC ломают разбор.
+install_opencode_json() {
+	step "opencode.json"
+	instructions_list >"$STATE_DIR/instructions"
+	if [ ! -s "$STATE_DIR/instructions" ]; then
+		skip "opencode.json (правил нет)"
+		return 0
+	fi
+
+	# JSONC не правим: комментарии ломают разбор, а два конфига рядом
+	# сделали бы правку `opencode.json` бесполезной.
+	if [ -e "$PROJECT_DIR/opencode.jsonc" ]; then
+		skip "opencode.jsonc: комментарии не дают править файл автоматически"
+		print_instructions_hint
+		return 0
+	fi
+
+	if ! have python3; then
+		warn "python3 не найден: opencode.json не изменён"
+		print_instructions_hint
+		return 0
+	fi
+
+	# Симлинк — чужое место: не пишем по нему. Это не ошибка установки:
+	# остальные файлы kit-а уже поставлены.
+	if [ -L "$PROJECT_DIR/opencode.json" ]; then
+		skip "opencode.json (симлинк; не трогаем)"
+		print_instructions_hint
+		return 0
+	fi
+
+	if [ "$DRY_RUN" -eq 1 ]; then
+		if [ -f "$PROJECT_DIR/opencode.json" ]; then
+			ok "opencode.json (план: дополнить instructions[])"
+		else
+			ok "opencode.json (план: создать с instructions[])"
+		fi
+		return 0
+	fi
+
+	if python3 "$KIT_ROOT/lib/merge.py" json "$PROJECT_DIR/opencode.json" \
+		"$STATE_DIR/instructions" >"$STATE_DIR/merge.out" 2>&1; then
+		sed 's/^/        /' "$STATE_DIR/merge.out"
+		ok "opencode.json (instructions[] актуален)"
+	else
+		warn "opencode.json: слияние не удалось, файл не изменён"
+		print_instructions_hint
+	fi
 }
 
 cmd_install() {
@@ -220,7 +272,7 @@ cmd_install() {
 
 	install_components
 	install_agents_md
-	print_instructions_hint
+	install_opencode_json
 
 	step "Готово"
 	if [ "${AGENT_KIT_EPHEMERAL:-0}" -eq 1 ]; then
@@ -240,7 +292,6 @@ cmd_install() {
 STATE_DIR=$(mktemp -d) || die "не удалось создать временный каталог"
 GROUPS_FILE="$STATE_DIR/groups.raw"
 : >"$GROUPS_FILE"
-AGENTS_WAS_PRESENT=0
 
 parse_args "$@"
 

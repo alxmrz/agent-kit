@@ -47,6 +47,7 @@ curl -fsSL https://raw.githubusercontent.com/alxmrz/agent-kit/main/bootstrap.sh 
 | `.opencode/commands/alxmrz_kit_<имя>.md` | команды (когда появятся в группе) |
 | `.opencode/agents/alxmrz_kit_<имя>.md` | агенты (когда появятся в группе) |
 | `AGENTS.md` | создаётся один раз, если его нет |
+| `opencode.json` | `instructions[]` дополняется правилами base и выбранных групп |
 
 ## Группы
 
@@ -65,13 +66,15 @@ curl -fsSL https://raw.githubusercontent.com/alxmrz/agent-kit/main/bootstrap.sh 
 - **Перезапись безусловная.** Файл с префиксом `alxmrz_kit_` всегда приводится к содержимому
   из `components/`. Правки в таких файлах не сохраняются — своё держите в файлах без префикса.
 - **Чужие файлы неприкосновенны.** Всё, что не имеет префикса `alxmrz_kit_`, не читается и не
-  перезаписывается. `opencode.json`, `openspec/config.yaml` и `.gitignore` kit не трогает.
+  перезаписывается. В `opencode.json` kit трогает только `instructions[]` и только дополняет его:
+  существующие записи, ключи и форматирование (отступ, CRLF, однострочный JSON) сохраняются.
+  `openspec/config.yaml` и `.gitignore` kit не трогает.
 - **В проекте не остаётся kit-а.** `bootstrap.sh` удаляет свой клон после успешной установки;
   каталога `.agent-kit/` в проекте нет, игнорировать в `.gitignore` нечего.
 - **Повторный запуск идемпотентен.** Если kit не менялся, диффа в git не будет.
-- **Правила подключает `AGENTS.md`.** В проект без `AGENTS.md` он создаётся из шаблона со
-  ссылкой на правила. Если `AGENTS.md` уже был, установка печатает пути для `instructions[]`
-  файла `opencode.json`.
+- **Правила подключены в `opencode.json`.** `instructions[]` получает пути правил `base` и всех
+  выбранных групп. Если `opencode.json` нет — он создаётся; если в проекте есть `opencode.jsonc`
+  или нет `python3`, файл не трогается и печатаются пути для ручной вставки.
 
 ## Флаги
 
@@ -96,6 +99,7 @@ curl -fsSL https://raw.githubusercontent.com/alxmrz/agent-kit/main/bootstrap.sh 
 bootstrap.sh                  точка входа: clone -> install.sh -> удаление клона
 install.sh                    установка
 lib/                          общие функции, группы, рендеринг ссылок
+lib/merge.py                  дополнение instructions[] в opencode.json
 components/base/              всегда ставимая группа
 components/php/               языковая группа (--with php)
 snippets/                     шаблон AGENTS.md
@@ -107,8 +111,9 @@ tests/smoke.sh                автопроверка на одноразовы
 
 ## Требования
 
-`sh`, `git`. Для `bootstrap.sh` нужен `git`; `install.sh` в сеть не ходит и внешних
-зависимостей не требует.
+`sh`, `git`. Для `bootstrap.sh` нужен `git`; `install.sh` в сеть не ходит. `python3` нужен
+только для дополнения `instructions[]` в `opencode.json`: без него файл не меняется, а пути
+правил печатаются для ручной вставки.
 
 ## Развитие kit-а
 

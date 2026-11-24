@@ -60,10 +60,14 @@ check "скилл создан с префиксом" test -f "$P/.agents/skills
 check "вспомогательный файл скилла скопирован" test -f "$P/.agents/skills/alxmrz_kit_spec-authoring/references/traceability.md"
 check "php_rules не попал в base" test ! -f "$P/.agents/rules/alxmrz_kit_php_rules.md"
 check "манифеста нет" test ! -e "$P/.agents/.alxmrz_kit_manifest.json"
-check "opencode.json не создан" test ! -e "$P/opencode.json"
+check "opencode.json создан" test -f "$P/opencode.json"
+check "opencode.json валиден" sh -c "python3 -c 'import json,sys; json.load(open(sys.argv[1]))' '$P/opencode.json'"
+check "instructions[] содержит правило base" grep -q '"\./\.agents/rules/alxmrz_kit_general_rules.md"' "$P/opencode.json"
+check "instructions[] не содержит неподключённую группу" sh -c "! grep -q 'php_rules' '$P/opencode.json'"
 check "AGENTS.md создан" test -f "$P/AGENTS.md"
 check "в AGENTS.md нет плейсхолдеров" sh -c "! grep -q '{{' '$P/AGENTS.md'"
 check "AGENTS.md ссылается на правило kit-а" grep -q 'alxmrz_kit_general_rules.md' "$P/AGENTS.md"
+check "AGENTS.md говорит, что правила в opencode.json" grep -q 'instructions\[\]' "$P/AGENTS.md"
 check ".gitignore не создан" test ! -e "$P/.gitignore"
 check "base не ссылается на php_rules" sh -c "! grep -q 'php_rules' '$P/.agents/rules/alxmrz_kit_general_rules.md'"
 check "skills не содержат metadata kit-а" sh -c "! grep -q 'alxmrz-kit:' '$P/.agents/skills/alxmrz_kit_conventional-commit/SKILL.md'"
@@ -131,8 +135,91 @@ check "при неизвестной группе ничего не записа
 	[ ! -e '$P/.agents' ] && [ ! -e '$P/AGENTS.md' ] && [ ! -e '$P/.opencode' ]
 "
 
-# --- 6. команды и агенты ----------------------------------------------------
-printf '\n== 6. commands и agents\n'
+# --- 6. opencode.json: правила в instructions[] -----------------------------
+printf '\n== 6. opencode.json\n'
+P=$(new_project own-config)
+cat >"$P/opencode.json" <<'JSON'
+{
+    "model": "example/model",
+    "instructions": [
+        "./docs/my_rules.md"
+    ]
+}
+JSON
+cp "$P/opencode.json" "$WORK/own-config-before"
+kit --dir "$P" --with php >"$WORK/own-opencode.log" 2>&1
+check "instructions[] дополнены правилом base" sh -c "
+	python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(\"\n\".join(d[\"instructions\"]))' '$P/opencode.json' |
+		grep -qx './.agents/rules/alxmrz_kit_general_rules.md'
+"
+check "instructions[] дополнены правилом выбранной группы" sh -c "
+	python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(\"\n\".join(d[\"instructions\"]))' '$P/opencode.json' |
+		grep -qx './.agents/rules/alxmrz_kit_php_rules.md'
+"
+check "чужие настройки и запись instructions сохранены" sh -c "
+	python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d[\"model\"] == \"example/model\"; assert d[\"instructions\"][0] == \"./docs/my_rules.md\"' '$P/opencode.json'
+"
+check "чужой отступ 4 пробела сохранён" grep -qx '    "model": "example/model",' "$P/opencode.json"
+check "лог сообщает о добавленных путях" grep -q 'added: ./\.agents/rules/alxmrz_kit_general_rules.md' "$WORK/own-opencode.log"
+
+cp "$P/opencode.json" "$WORK/own-config-once"
+kit --dir "$P" --with php >/dev/null 2>&1
+check "повторный запуск не меняет opencode.json" cmp -s "$P/opencode.json" "$WORK/own-config-once"
+
+kit --dir "$P" --with php >/dev/null 2>&1
+check "настройки kit-а переживают повтор" grep -qx '    "model": "example/model",' "$P/opencode.json"
+check "повтор не дублирует пути" sh -c "
+	python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(\"\n\".join(d[\"instructions\"]))' '$P/opencode.json' |
+		grep -c 'alxmrz_kit_general_rules.md' | grep -qx 1
+"
+
+# CRLF и однострочный JSON не должны переформатироваться.
+P=$(new_project crlf-config)
+printf '{\r\n  "instructions": [\r\n    "./docs/own.md"\r\n  ]\r\n}\r\n' >"$P/opencode.json"
+kit --dir "$P" >/dev/null 2>&1
+check "CRLF сохранён" sh -c "od -c '$P/opencode.json' | grep -q '\\\\r'"
+check "чужая запись CRLF-конфига цела" grep -q './docs/own.md' "$P/opencode.json"
+
+P=$(new_project compact-config)
+printf '{"instructions":["./docs/own.md"]}\n' >"$P/opencode.json"
+kit --dir "$P" >/dev/null 2>&1
+check "однострочный JSON остался однострочным" test "$(wc -l <"$P/opencode.json")" -eq 1
+
+# Установка только дополняет конфиг: чужие записи и записи прежних запусков
+# остаются — kit не удаляет из проекта ни файлы, ни строки конфига.
+P=$(new_project append-only)
+kit --dir "$P" --with php >/dev/null 2>&1
+kit --dir "$P" >/dev/null 2>&1
+check "запись прежнего запуска не удаляется" grep -q 'alxmrz_kit_php_rules' "$P/opencode.json"
+check "файл правила тоже остался" test -f "$P/.agents/rules/alxmrz_kit_php_rules.md"
+
+# JSONC и битый JSON: файл не трогается, печатаются пути для ручной правки.
+P=$(new_project jsonc-config)
+printf '{\n  // комментарий\n  "instructions": []\n}\n' >"$P/opencode.json"
+cp "$P/opencode.json" "$WORK/jsonc-before"
+kit --dir "$P" >"$WORK/jsonc.log" 2>&1 || bad "JSONC уронил установку"
+check "JSONC не изменён" cmp -s "$P/opencode.json" "$WORK/jsonc-before"
+check "для JSONC печатается подсказка" grep -q 'инструкц\|instructions\[\]' "$WORK/jsonc.log"
+
+# opencode.jsonc не трогаем: комментарии ломают разбор, а рядом с ним
+# opencode.json не создаём — иначе получится два конфига.
+P=$(new_project jsonc-project)
+printf '{\n  // комментарий\n}\n' >"$P/opencode.jsonc"
+kit --dir "$P" >"$WORK/jsonc-project.log" 2>&1 || bad "opencode.jsonc уронил установку"
+check "при opencode.jsonc файл не создан" test ! -e "$P/opencode.json"
+check "opencode.jsonc не изменён" grep -q '// комментарий' "$P/opencode.jsonc"
+check "для opencode.jsonc печатается подсказка" grep -q 'instructions\[\]' "$WORK/jsonc-project.log"
+
+# Симлинк opencode.json не трогается, установка не падает.
+P=$(new_project link-config)
+printf 'НЕ ТРОГАТЬ\n' >"$WORK/victim-config.json"
+ln -s "$WORK/victim-config.json" "$P/opencode.json"
+kit --dir "$P" >"$WORK/link-config.log" 2>&1 || bad "симлинк opencode.json уронил установку"
+check "файл по симлинку opencode.json не изменён" grep -qxF 'НЕ ТРОГАТЬ' "$WORK/victim-config.json"
+check "правила поставлены при симлинке opencode.json" test -f "$P/.agents/rules/alxmrz_kit_general_rules.md"
+
+# --- 7. команды и агенты ----------------------------------------------------
+printf '\n== 7. commands и agents\n'
 P=$(new_project commands)
 sh "$EXT/install.sh" --dir "$P" >/dev/null 2>&1
 check "команда попала в .opencode/commands" test -f "$P/.opencode/commands/alxmrz_kit_review.md"
@@ -141,18 +228,21 @@ check "пустые каталоги группы не создают мусор
 	! ls '$P/.opencode/commands/' | grep -v '^alxmrz_kit_review.md$' | grep -q .
 "
 
-# --- 7. AGENTS.md: свой файл и симлинк -------------------------------------
-printf '\n== 7. AGENTS.md\n'
+# --- 8. AGENTS.md: свой файл и симлинк -------------------------------------
+printf '\n== 8. AGENTS.md\n'
 P=$(new_project agents-own)
 printf '# Мой AGENTS\n' >"$P/AGENTS.md"
 kit --dir "$P" >"$WORK/own.log" 2>&1
 check "свой AGENTS.md не перезаписан" grep -qxF '# Мой AGENTS' "$P/AGENTS.md"
-check "печатается подсказка про instructions[]" grep -q 'instructions\[\]' "$WORK/own.log"
-check "подсказка содержит путь правила" grep -q '.agents/rules/alxmrz_kit_general_rules.md' "$WORK/own.log"
+check "правила подключены и при своём AGENTS.md" sh -c "
+	grep -q 'alxmrz_kit_general_rules.md' '$P/opencode.json'
+"
 
 P=$(new_project agents-created)
 kit --dir "$P" >"$WORK/created.log" 2>&1
-check "подсказка не печатается при создании AGENTS.md" sh -c "! grep -q 'instructions\[\]' '$WORK/created.log'"
+check "AGENTS.md создан и правила подключены" sh -c "
+	test -f '$P/AGENTS.md' && grep -q 'alxmrz_kit_general_rules.md' '$P/opencode.json'
+"
 check "правка своего AGENTS.md переживает обновление" sh -c "
 	printf '\nправка\n' >>'$P/AGENTS.md'
 	sh '$KIT_ROOT/install.sh' --dir '$P' >/dev/null 2>&1
@@ -166,8 +256,8 @@ kit --dir "$P" >/dev/null 2>&1 || bad "симлинк AGENTS.md уронил у�
 check "AGENTS.md остался симлинком" test -L "$P/AGENTS.md"
 check "файл по симлинку не изменён" grep -qxF 'НЕ ТРОГАТЬ' "$WORK/victim-agents.md"
 
-# --- 8. .gitignore не трогается ---------------------------------------------
-printf '\n== 8. .gitignore\n'
+# --- 9. .gitignore не трогается ---------------------------------------------
+printf '\n== 9. .gitignore\n'
 P=$(new_project gitignore-none)
 kit --dir "$P" >/dev/null 2>&1
 check ".gitignore не создан" test ! -e "$P/.gitignore"
@@ -178,15 +268,15 @@ cp "$P/.gitignore" "$WORK/gi-own-before"
 kit --dir "$P" >/dev/null 2>&1
 check "чужой .gitignore сохранён байт-в-байт" cmp -s "$P/.gitignore" "$WORK/gi-own-before"
 
-# --- 9. dry-run -------------------------------------------------------------
-printf '\n== 9. dry-run\n'
+# --- 10. dry-run ------------------------------------------------------------
+printf '\n== 10. dry-run\n'
 P=$(new_project dry)
 kit --dir "$P" --dry-run >/dev/null 2>&1
 check "dry-run не создал .agents" test ! -d "$P/.agents"
 check "dry-run не создал AGENTS.md" test ! -e "$P/AGENTS.md"
 
-# --- 10. границы записи ------------------------------------------------------
-printf '\n== 10. границы\n'
+# --- 11. границы записи -----------------------------------------------------
+printf '\n== 11. границы\n'
 if kit --dir "$HOME" >"$WORK/home.log" 2>&1; then
 	bad "установка в домашний каталог разрешена"
 else
@@ -220,8 +310,8 @@ else
 fi
 check "файл по симлинку не изменён" grep -qxF 'НЕ ТРОГАТЬ' "$WORK/victim.md"
 
-# --- 11. bootstrap.sh удаляет клон ------------------------------------------
-printf '\n== 11. bootstrap\n'
+# --- 12. bootstrap.sh удаляет клон -----------------------------------------
+printf '\n== 12. bootstrap\n'
 # Локальный «origin» из текущих исходников kit-а: сеть тесту не нужна.
 ORIGIN="$WORK/origin"
 mkdir -p "$ORIGIN"
@@ -319,8 +409,8 @@ check "клон с правками не удалён" test -f "$P/.agent-kit/in
 check "правка в клоне цела" grep -q '# доработка kit-а' "$P/.agent-kit/install.sh"
 check "предупреждение о незакоммиченных изменениях" grep -q 'незакоммиченные изменения' "$WORK/bootstrap-dirty.log"
 
-# --- 12. ошибка компонента прерывает установку ------------------------------
-printf '\n== 12. битый компонент\n'
+# --- 13. ошибка компонента прерывает установку -----------------------------
+printf '\n== 13. битый компонент\n'
 EXT=$(kit_ext ext-broken)
 mkdir -p "$EXT/components/base/rules/nested"
 printf '# вложенный\n' >"$EXT/components/base/rules/nested/x.md"
