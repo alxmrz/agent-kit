@@ -191,7 +191,119 @@ install_agents_md() {
 		"$KIT_ROOT/snippets/AGENTS.md.tmpl" >"$STATE_DIR/AGENTS.md"
 	mv "$STATE_DIR/AGENTS.md" "$_dst"
 	ok "AGENTS.md (создан из шаблона)"
-	warn "AGENTS.md: заполните разделы TODO — дальше kit его не трогает"
+	warn "AGENTS.md: заполните разделы TODO — kit дописывает только правила"
+}
+
+# rule_title <файл>: текст первого заголовка правила (`# ...`).
+# По нему видно, что правило уже влито в AGENTS.md: повторно оно не
+# дописывается. Нет заголовка — пустая строка.
+rule_title() {
+	sed -n '/^#\{1,6\}[[:space:]]/{
+		s/^#\{1,6\}[[:space:]]*//
+		s/[[:space:]]*$//
+		p
+		q
+	}' "$1"
+}
+
+# ensure_trailing_newline <файл>: дополняет файл переводом строки, если его нет.
+# Без этого следующая вставка приклеилась бы к последней строке.
+ensure_trailing_newline() {
+	[ -s "$1" ] || return 0
+	[ -n "$(tail -c 1 "$1")" ] || return 0
+	printf '\n' >>"$1"
+}
+
+# append_rules_to_agents_md: правила base и выбранных групп дописываются в
+# конец AGENTS.md. AGENTS.md принадлежит проекту, поэтому дописываем только
+# недостающее: правило, чей заголовок уже есть в файле, пропускается. Так
+# повторный запуск не плодит дубликаты, а правки пользователя остаются целы.
+append_rules_to_agents_md() {
+	step "Правила в AGENTS.md"
+	_dst="$PROJECT_DIR/AGENTS.md"
+
+	if [ -L "$_dst" ]; then
+		skip "AGENTS.md — симлинк, правила не дописываются"
+		return 0
+	fi
+	if [ ! -f "$_dst" ] && [ "$DRY_RUN" -ne 1 ]; then
+		die "AGENTS.md исчез между шагами установки"
+	fi
+
+	grep '^[^/]*/rules/' "$STATE_DIR/sources" >"$STATE_DIR/rule.sources" || true
+	if [ ! -s "$STATE_DIR/rule.sources" ]; then
+		skip "AGENTS.md (правил нет)"
+		return 0
+	fi
+
+	# Заголовки, которые уже есть: и из исходного файла, и из влитых правил —
+	# два правила с одинаковым заголовком не должны попасть оба.
+	: >"$STATE_DIR/agents.headings"
+	if [ -f "$_dst" ]; then
+		sed -n '/^#\{1,6\}[[:space:]]/{
+			s/^#\{1,6\}[[:space:]]*//
+			s/[[:space:]]*$//
+			p
+		}' "$_dst" >"$STATE_DIR/agents.headings" || die "не удалось прочитать AGENTS.md"
+	fi
+
+	# Временный файл лежит рядом с целевым: mv заменяет файл атомарно и только
+	# внутри проекта. В dry-run он не нужен.
+	_am_tmp="$_dst.tmp.$$"
+	_am_added=0
+	if [ "$DRY_RUN" -eq 1 ]; then
+		_am_tmp=
+	elif [ -f "$_dst" ]; then
+		cp -p "$_dst" "$_am_tmp" || die "не удалось скопировать AGENTS.md"
+	else
+		: >"$_am_tmp"
+	fi
+
+	while IFS= read -r _src; do
+		[ -n "$_src" ] || continue
+		_am_rule="$STATE_DIR/rule.tmp"
+		cp -p "$COMPONENTS_DIR/$_src" "$_am_rule" || {
+			rm -f "$_am_tmp"
+			die "не удалось прочитать $_src"
+		}
+		# Ссылки внутри правила должны указывать на поставленные файлы.
+		rewrite_refs "$_am_rule"
+
+		_title=$(rule_title "$_am_rule")
+		if [ -n "$_title" ] && grep -qxF "$_title" "$STATE_DIR/agents.headings"; then
+			skip "AGENTS.md: правило $_src уже есть"
+			continue
+		fi
+		if [ "$DRY_RUN" -eq 1 ]; then
+			ok "AGENTS.md (план: дописать правило $_src)"
+			_am_added=$((_am_added + 1))
+			continue
+		fi
+
+		if [ -s "$_am_tmp" ]; then
+			ensure_trailing_newline "$_am_tmp"
+			printf '\n' >>"$_am_tmp"
+		fi
+		printf '<!-- alxmrz_kit: %s -->\n\n' "$_src" >>"$_am_tmp"
+		cat "$_am_rule" >>"$_am_tmp"
+		ensure_trailing_newline "$_am_tmp"
+		if [ -n "$_title" ]; then
+			printf '%s\n' "$_title" >>"$STATE_DIR/agents.headings"
+		fi
+
+		ok "AGENTS.md: дописано правило $_src"
+		_am_added=$((_am_added + 1))
+	done <"$STATE_DIR/rule.sources"
+
+	if [ "$DRY_RUN" -eq 1 ]; then
+		return 0
+	fi
+	if [ "$_am_added" -eq 0 ]; then
+		rm -f "$_am_tmp"
+		skip "AGENTS.md (все правила уже на месте)"
+		return 0
+	fi
+	finish_tmp "$_am_tmp" "$_dst"
 }
 
 # Пути поставленных правил в виде, пригодном для instructions[]:
