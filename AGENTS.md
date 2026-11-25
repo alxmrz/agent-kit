@@ -14,14 +14,14 @@ python3 -m compileall -q install.py kit tests
 python3 tests/smoke.py
 ```
 
-`python3 tests/smoke.py` — единственный тест: 108 проверок, ~20 с. Он гоняет установку на
-одноразовых каталогах в системном `tempfile` (чужие файлы, перезапись, идемпотентность, `--with`,
-`commands/`/`agents/`, `AGENTS.md`, `opencode.json`, `.gitignore`, границы записи, `--dry-run`,
-`bootstrap.sh` с удалением клона).
-Отдельного прогона одного теста нет: скопируйте блок `# --- N.` во временный скрипт или
-временно закомментируйте остальные. Тест требует `git` (создаёт проекты через `git init` и
-локальный «origin» для `bootstrap.sh`) и не должен оставлять следов в `$HOME` — есть проверки,
-что установка в `$HOME` и `/` запрещена.
+`python3 tests/smoke.py` — единственная точка входа: обычный `unittest` по модулям `tests/`
+(156 тестов, ~4 с). `tests/smoke.py` только собирает и запускает их; `python3 tests/smoke.py
+test_merge` гоняет один модуль, `python3 -m unittest discover -s tests -t .` — то же без
+обёртки. Юнит-тесты `kit/` (`test_common`, `test_components`, `test_render`, `test_merge`) не
+трогают диск вне `tempfile`; интеграционные (`test_install`, `test_bootstrap`) запускают
+`install.py` и `bootstrap.sh` отдельными процессами в одноразовых каталогах. Тесты требуют `git`
+(создают проекты через `git init` и локальный «origin» для `bootstrap.sh`) и не оставляют следов
+в `$HOME` — есть проверки, что установка в `$HOME` и `/` запрещена.
 
 ## Что kit правит в чужом
 

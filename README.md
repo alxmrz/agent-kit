@@ -110,7 +110,14 @@ kit/merge.py                  дополнение instructions[] в opencode.js
 components/base/              всегда ставимая группа
 components/php/               языковая группа (--with php)
 snippets/                     шаблон AGENTS.md
-tests/smoke.py                автопроверка на одноразовых каталогах
+tests/support.py              помощники тестов: каталоги, CLI, снимки
+tests/test_common.py          юнит: пути и границы записи
+tests/test_components.py      юнит: группы и раскладка путей
+tests/test_render.py          юнит: ссылки и атомарная запись
+tests/test_merge.py           юнит: дополнение instructions[]
+tests/test_install.py         интеграция: установка через CLI
+tests/test_bootstrap.py       интеграция: bootstrap.sh и клон
+tests/smoke.py                запуск всех тестов (unittest)
 ```
 
 Раскладка `components/<группа>/<тип>/`: `rules/`, `skills/`, `commands/`, `agents/`.
@@ -128,7 +135,8 @@ tests/smoke.py                автопроверка на одноразовы
 проверьте установку:
 
 ```sh
-python3 tests/smoke.py
+python3 tests/smoke.py           # все тесты
+python3 tests/smoke.py test_merge # один модуль
 ```
 
 Установку из клона запускает `python3 install.py --dir <проект> [--with php]`.
