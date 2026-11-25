@@ -74,7 +74,7 @@ curl -fsSL https://raw.githubusercontent.com/alxmrz/agent-kit/main/bootstrap.sh 
 - **Повторный запуск идемпотентен.** Если kit не менялся, диффа в git не будет.
 - **Правила подключены в `opencode.json`.** `instructions[]` получает пути правил `base` и всех
   выбранных групп. Если `opencode.json` нет — он создаётся; если в проекте есть `opencode.jsonc`
-  или нет `python3`, файл не трогается и печатаются пути для ручной вставки.
+  или конфиг не разбирается как JSON, файл не трогается и печатаются пути для ручной вставки.
 
 ## Флаги
 
@@ -83,6 +83,10 @@ curl -fsSL https://raw.githubusercontent.com/alxmrz/agent-kit/main/bootstrap.sh 
 | `--dir <каталог>` | целевой проект (по умолчанию текущий) |
 | `--with <группы>` | дополнительные группы через запятую; можно повторять |
 | `--dry-run` | показать план, ничего не записывая |
+| `-h`, `--help` | справка: версия, флаги, доступные группы |
+
+Локальный запуск из клона — `python3 install.py [install] [флаги]`; команда `install` —
+значение по умолчанию и её можно не писать.
 
 `bootstrap.sh` дополнительно понимает `--offline` — не обновлять уже существующий клон (полезно
 после упавшей установки, когда клон остался на месте).
@@ -96,14 +100,17 @@ curl -fsSL https://raw.githubusercontent.com/alxmrz/agent-kit/main/bootstrap.sh 
 ## Состав репозитория
 
 ```
-bootstrap.sh                  точка входа: clone -> install.sh -> удаление клона
-install.sh                    установка
-lib/                          общие функции, группы, рендеринг ссылок
-lib/merge.py                  дополнение instructions[] в opencode.json
+bootstrap.sh                  точка входа: clone -> install.py -> удаление клона
+install.py                    установка: CLI и шаги
+kit/                          пакет установки
+kit/common.py                 префикс, вывод, пути и границы записи
+kit/components.py             группы, поиск источников, раскладка путей
+kit/render.py                 переписывание ссылок, атомарная запись
+kit/merge.py                  дополнение instructions[] в opencode.json
 components/base/              всегда ставимая группа
 components/php/               языковая группа (--with php)
 snippets/                     шаблон AGENTS.md
-tests/smoke.sh                автопроверка на одноразовых каталогах
+tests/smoke.py                автопроверка на одноразовых каталогах
 ```
 
 Раскладка `components/<группа>/<тип>/`: `rules/`, `skills/`, `commands/`, `agents/`.
@@ -111,9 +118,9 @@ tests/smoke.sh                автопроверка на одноразовы
 
 ## Требования
 
-`sh`, `git`. Для `bootstrap.sh` нужен `git`; `install.sh` в сеть не ходит. `python3` нужен
-только для дополнения `instructions[]` в `opencode.json`: без него файл не меняется, а пути
-правил печатаются для ручной вставки.
+`python3` (3.9+) — обязателен: установка целиком выполняется на Python. Для `bootstrap.sh`
+дополнительно нужен `sh` и `git`; до клонирования он проверяет и `python3`, и `git`. Сеть нужна
+только `bootstrap.sh` — `install.py` в сеть не ходит.
 
 ## Развитие kit-а
 
@@ -121,7 +128,9 @@ tests/smoke.sh                автопроверка на одноразовы
 проверьте установку:
 
 ```sh
-./tests/smoke.sh
+python3 tests/smoke.py
 ```
+
+Установку из клона запускает `python3 install.py --dir <проект> [--with php]`.
 
 OpenSpec-скиллы (`openspec-*`) намеренно не входят в kit: их создаёт `openspec init`.

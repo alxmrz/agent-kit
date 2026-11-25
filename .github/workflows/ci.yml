@@ -11,17 +11,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Синтаксис POSIX sh
-        run: |
-          for f in install.sh bootstrap.sh lib/*.sh tests/smoke.sh; do
-            dash -n "$f"
-          done
+      - name: Синтаксис POSIX sh (bootstrap)
+        run: dash -n bootstrap.sh
 
-      - name: shellcheck
-        run: shellcheck -s sh install.sh bootstrap.sh lib/*.sh tests/smoke.sh
+      - name: shellcheck (bootstrap)
+        run: shellcheck -s sh bootstrap.sh
 
-      - name: Синтаксис merge.py
-        run: python3 -m py_compile lib/merge.py
+      - name: Синтаксис Python
+        run: python3 -m compileall -q install.py kit tests
 
       - name: smoke-тесты
-        run: ./tests/smoke.sh
+        run: python3 tests/smoke.py
